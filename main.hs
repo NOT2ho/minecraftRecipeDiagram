@@ -6,7 +6,7 @@ import System.Directory (listDirectory, getDirectoryContents, getCurrentDirector
 import Data.List (sort, groupBy)
 import GHC.List (foldl1')
 import Data.Bits
-import Data.Map (Map, fromList, findWithDefault)
+import Data.Map ( Map, fromList, findWithDefault, elems, keys, (!) )
 import Numeric (showHex)
 
 type Graph a = [Node a]
@@ -28,7 +28,7 @@ main = do
     let recp = link recipes
     let loop = loops recp
     let roots = findRoots recp
-    svg $ graphtoSVG 50 4 9 recp
+    svg $ graphtoSVG 60 17 53 50 15 recp
 
 
 parser :: String -> [String]
@@ -85,7 +85,7 @@ name = drop 1 . dropWhile (/= ':')
 svg :: [String] -> IO ()
 svg l  = do
     currentDir <- getCurrentDirectory
-    let dir = currentDir </> "file.svg"
+    let dir = currentDir </> "output.svg"
     writeFile dir $ svgxml l
 
 svgxml :: [String] -> String
@@ -152,18 +152,36 @@ path :: (Int, Int) -> Int -> String -> (Int, Int) -> String
 path (x,y) stroke color (x', y')  = "<path d=" ++ "\"M " ++ show x ++ " " ++ show y ++ " " ++ "L " ++ show x' ++ " " ++ show y' ++ " "++ "z\"\n"
        ++  "\tstroke=\"" ++ color ++ "\" stroke-width=\"" ++ show stroke ++ "\"/>\n"
 
+arrow ::  Int -> (Int, Int) -> Int -> String -> (Int, Int) -> [String]
+arrow len (x,y) stroke color (x', y') = let deg = atan $ fromIntegral (y-y') / fromIntegral (x-x')  :: Float
+                                            in let d = if (y > y') `xor` (deg > 0) then deg + pi / 4 else deg + 3*pi/4
+                                            in let b = round (sin d * fromIntegral len :: Float ) + y
+                                            in let a = round (cos d * fromIntegral len :: Float ) + x
+                                            in let d' = if (y > y') `xor` (deg > 0) then deg - pi / 4 else deg - 3*pi/4
+                                            in let b' = round (sin d' * fromIntegral len :: Float ) + y
+                                            in let a' = round (cos d' * fromIntegral len :: Float) + x
+                                            in path (x,y) stroke color (x',y') : [path (x, y) stroke color (a, b), path (x, y) stroke color (a', b')]
+
+dots ::  Int -> [(Int, Int)] -> [String]
+dots r = map (`circle` r)
+
+
+circle :: (Int, Int) -> Int -> String
+circle (x,y) r = "\t<circle cx=\"" ++ show x ++ "\" cy=\"" ++ show y ++ "\" r=\"" ++ show r ++ "\" />\"\n"
+
 coord :: Ord a => Int -> Int -> Graph a -> Map a (Int, Int)
 coord i j g = let all = toList $ sFromList (concatMap tl g) `union` sFromList (map hd g)
-            in Data.Map.fromList [(a , b) | a <- all | b <- randomIntTuples i j 10000]
+            in Data.Map.fromList [(a , b) | a <- all | b <- map (\(x,y) -> (x+500, y+500)) $ randomIntTuples i j 19000]
 
 
-graphtoSVG ::  (Ord a, Show a) => Int ->  Int -> Int -> Graph a -> [String]
-graphtoSVG s i j g = let c = coord i j g
-                    in concatMap (\x -> map
-                       (path (findWithDefault (0, 0) (hd x) c) 2 (colorCode $ fst (findWithDefault (0, 0) (hd x) c))
+graphtoSVG ::  (Ord a, Show a) => Int ->  Int -> Int ->  Int -> Int -> Graph a -> [String]
+graphtoSVG s i j l r g = let c = coord i j g
+                    in  dots r (elems c)
+                       ++ concatMap (\x -> concatMap
+                       (arrow l (findWithDefault (0, 0) (hd x) c) 4 (colorCode $ fst (findWithDefault (0, 0) (hd x) c))
                           . flip (findWithDefault (0, 0)) c)
                        (tl x)) g
-                       ++ map (\x -> text "Super Sans" s "blue" (show $ hd x) `uncurry` findWithDefault (0,0) (hd x) c) g
+                       ++ map (\x -> text "Super Sans" s "blue" (show x) `uncurry` (c ! x)) (keys c)
 
 colorCode :: Int -> String
 colorCode i = "#" ++ concat ((take 6 . drop 2) $ random16 i)
@@ -172,6 +190,6 @@ random16 :: Int -> [String]
 random16 i = map (hex . round .  (*15)) (xorshift32inf i)
 
 hex :: Int -> String
-hex i = if i > 9 
-    then (if i == 10 then "A" else if i == 11 then "B" else if i == 12 then "C" else if i == 13 then "D" else if i == 14 then "E" else "F") 
+hex i = if i > 9
+    then (if i == 10 then "A" else if i == 11 then "B" else if i == 12 then "C" else if i == 13 then "D" else if i == 14 then "E" else "F")
     else show i
